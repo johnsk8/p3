@@ -28,6 +28,7 @@ using namespace std;
 extern "C"
 {
 #define VM_MEMORY_POOL_ID_SYSTEM 0
+
 class TCB
 {
 	public:
@@ -330,19 +331,44 @@ TVMStatus VMStart(int tickms, TVMMemorySize heapsize, int machinetickms,
 } //VMStart()
 
 TVMStatus VMMemoryPoolCreate(void *base, TVMMemorySize size, TVMMemoryPoolIDRef memory)
-{return 0;} //VMMemoryPoolCreate()
+{
+	//TMachineSignalState OldState; //local variable to suspend
+	//MachineSuspendSignals(&OldState); //suspend signals
+	//MachineResumeSignals(&OldState); //resume signals
+	return 0;
+} //VMMemoryPoolCreate()
 
 TVMStatus VMMemoryPoolDelete(TVMMemoryPoolID memory)
-{return 0;} //VMMemoryPoolDelete()
+{
+	//TMachineSignalState OldState; //local variable to suspend
+	//MachineSuspendSignals(&OldState); //suspend signals
+	//MachineResumeSignals(&OldState); //resume signals
+	return 0;
+} //VMMemoryPoolDelete()
 
 TVMStatus VMMemoryPoolQuery(TVMMemoryPoolID memory, TVMMemorySizeRef byesleft)
-{return 0;} //VMMemoryPoolQuery()
+{
+	//TMachineSignalState OldState; //local variable to suspend
+	//MachineSuspendSignals(&OldState); //suspend signals
+	//MachineResumeSignals(&OldState); //resume signals
+	return 0;
+} //VMMemoryPoolQuery()
 
 TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void **pointer)
-{return 0;} //VMMemoryPoolAllocate()
+{
+	//TMachineSignalState OldState; //local variable to suspend
+	//MachineSuspendSignals(&OldState); //suspend signals
+	//MachineResumeSignals(&OldState); //resume signals
+	return 0;
+} //VMMemoryPoolAllocate()
 
 TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
-{return 0;} //VMMemoryPoolDeallocate()
+{
+	//TMachineSignalState OldState; //local variable to suspend
+	//MachineSuspendSignals(&OldState); //suspend signals
+	//MachineResumeSignals(&OldState); //resume signals
+	return 0;
+} //VMMemoryPoolDeallocate()
 
 TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsize, 
 	TVMThreadPriority prio, TVMThreadIDRef tid)
