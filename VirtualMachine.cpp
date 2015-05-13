@@ -323,19 +323,30 @@ TVMStatus VMStart(int tickms, TVMMemorySize heapsize, int machinetickms,
 		VMMainTCB->threadState = VM_THREAD_STATE_RUNNING;
 		currentThread = VMMainTCB; //current thread is now main
 
+		uint8_t *base = new uint8_t[heapsize];
+		MPB *VMMainMPB = new MPB;
+		VMMainMPB->MPsize = heapsize; 
+		VMMainMPB->MPid = VM_MEMORY_POOL_ID_SYSTEM; //mem pool id is 0
+		VMMainMPB->base = base; //allocate for heapsize
+		VMMainMPB->MPid = 0; //first in the memory pool
+
+		memPoolList.push_back(VMMainMPB); //push main into mem pool list
 		threadList.push_back(idle); //push into pos 0
 		threadList.push_back(VMMainTCB); //push into pos 1
-		VMMain(argc, argv);
+		VMMain(argc, argv); //call to vmmain
 		return VM_STATUS_SUCCESS;
 	}
 } //VMStart()
 
 TVMStatus VMMemoryPoolCreate(void *base, TVMMemorySize size, TVMMemoryPoolIDRef memory)
 {
-	//TMachineSignalState OldState; //local variable to suspend
-	//MachineSuspendSignals(&OldState); //suspend signals
-	//MachineResumeSignals(&OldState); //resume signals
-	return 0;
+	TMachineSignalState OldState; //local variable to suspend
+	MachineSuspendSignals(&OldState); //suspend signals
+
+
+
+	MachineResumeSignals(&OldState); //resume signals
+	return VM_STATUS_SUCCESS;
 } //VMMemoryPoolCreate()
 
 TVMStatus VMMemoryPoolDelete(TVMMemoryPoolID memory)
