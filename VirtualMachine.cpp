@@ -343,7 +343,15 @@ TVMStatus VMMemoryPoolCreate(void *base, TVMMemorySize size, TVMMemoryPoolIDRef 
 	TMachineSignalState OldState; //local variable to suspend
 	MachineSuspendSignals(&OldState); //suspend signals
 
+	if(base == NULL || memory == NULL || size == 0)
+		return VM_STATUS_ERROR_INVALID_PARAMETER;
 
+	uint8_t *stack = new uint8_t[size];
+	MPB *newMemPool = new MPB;
+	newMemPool->base = stack;
+	newMemPool->MPsize = size;
+	newMemPool->MPsize = *memory = memPoolList.size(); //gets next size in list val
+	memPoolList.push_back(newMemPool); //push it into the list of mem pools
 
 	MachineResumeSignals(&OldState); //resume signals
 	return VM_STATUS_SUCCESS;
