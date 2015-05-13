@@ -63,7 +63,7 @@ class MPB
 	TVMMemoryPoolID MPid; //memory pool id
 	TVMMemorySizeRef MPsizeRef;
 	void *base; //pointer for base of stack
-	//something for keeping track of free spaces
+	uint8_t freeSpace; //something for keeping track of free spaces
 	//keep track of sizes and allocated spaces
 }; //clas MPB - Memory Pool Block
 
@@ -380,12 +380,12 @@ TVMStatus VMMemoryPoolQuery(TVMMemoryPoolID memory, TVMMemorySizeRef bytesleft)
 	TMachineSignalState OldState; //local variable to suspend
 	MachineSuspendSignals(&OldState); //suspend signals
 
-	if(bytesleft)
+	if(bytesleft == NULL) //invalid check
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 
 	MPB *myMemPool = findMemoryPool(memory);
 	if(myMemPool == NULL)
-		return VM_STATUS_ERROR_INVALID_PARAMETER;
+		return VM_STATUS_ERROR_INVALID_PARAMETER; //mem does not exist
 
 	*bytesleft = myMemPool->MPid;
 
@@ -395,10 +395,18 @@ TVMStatus VMMemoryPoolQuery(TVMMemoryPoolID memory, TVMMemorySizeRef bytesleft)
 
 TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void **pointer)
 {
-	//TMachineSignalState OldState; //local variable to suspend
-	//MachineSuspendSignals(&OldState); //suspend signals
-	//MachineResumeSignals(&OldState); //resume signals
-	return 0;
+	TMachineSignalState OldState; //local variable to suspend
+	MachineSuspendSignals(&OldState); //suspend signals
+
+	if(size == 0 || pointer == NULL) //invalid check
+		return VM_STATUS_ERROR_INVALID_PARAMETER;
+
+	MPB *myMemPool = findMemoryPool(memory);
+	if(myMemPool == NULL) 
+		return VM_STATUS_ERROR_INVALID_PARAMETER; //mem does not exist
+
+	MachineResumeSignals(&OldState); //resume signals
+	return VM_STATUS_SUCCESS;
 } //VMMemoryPoolAllocate()
 
 TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
