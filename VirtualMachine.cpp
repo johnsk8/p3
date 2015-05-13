@@ -44,7 +44,7 @@ class TCB
 	int fileResult;//possibly need something to hold file return type
 }; //class TCB - Thread Control Block
 
-class MB 
+class MB
 {
 	public:
 	TVMMutexID mutexID; //holds mutex ID
@@ -199,6 +199,16 @@ MB *findMutex(TVMMutexID mutex)
 	return NULL; //mutex does not exist
 } //findMutex()
 
+MPB *findMemoryPool(TVMMemoryPoolID memory)
+{
+	for(vector<MPB*>::iterator itr = memPoolList.begin(); itr != memPoolList.end(); ++itr)
+	{
+		if((*itr)->MPid == memory)
+			return *itr; //memory id exists
+	}
+	return NULL; //memory id does not exist
+} //findMemoryPool;
+
 void removeFromMutex(TCB* myThread)
 {
 	//check and make sure not in any Mutex queues
@@ -343,7 +353,7 @@ TVMStatus VMMemoryPoolCreate(void *base, TVMMemorySize size, TVMMemoryPoolIDRef 
 	TMachineSignalState OldState; //local variable to suspend
 	MachineSuspendSignals(&OldState); //suspend signals
 
-	if(base == NULL || memory == NULL || size == 0)
+	if(base == NULL || memory == NULL || size == 0) //invalid check
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 
 	uint8_t *stack = new uint8_t[size];
@@ -367,10 +377,20 @@ TVMStatus VMMemoryPoolDelete(TVMMemoryPoolID memory)
 
 TVMStatus VMMemoryPoolQuery(TVMMemoryPoolID memory, TVMMemorySizeRef byesleft)
 {
-	//TMachineSignalState OldState; //local variable to suspend
-	//MachineSuspendSignals(&OldState); //suspend signals
-	//MachineResumeSignals(&OldState); //resume signals
-	return 0;
+	TMachineSignalState OldState; //local variable to suspend
+	MachineSuspendSignals(&OldState); //suspend signals
+
+	if(byesleft)
+		return VM_STATUS_ERROR_INVALID_PARAMETER;
+
+	MPB *myMemPool = findMemoryPool(memory);
+	if(myMemPool == NULL)
+		return VM_STATUS_ERROR_INVALID_PARAMETER;
+
+	*byesleft = myMemPool->MPid;
+
+	MachineResumeSignals(&OldState); //resume signals
+	return VM_STATUS_SUCCESS;
 } //VMMemoryPoolQuery()
 
 TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void **pointer)
