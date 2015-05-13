@@ -375,19 +375,19 @@ TVMStatus VMMemoryPoolDelete(TVMMemoryPoolID memory)
 	return 0;
 } //VMMemoryPoolDelete()
 
-TVMStatus VMMemoryPoolQuery(TVMMemoryPoolID memory, TVMMemorySizeRef byesleft)
+TVMStatus VMMemoryPoolQuery(TVMMemoryPoolID memory, TVMMemorySizeRef bytesleft)
 {
 	TMachineSignalState OldState; //local variable to suspend
 	MachineSuspendSignals(&OldState); //suspend signals
 
-	if(byesleft)
+	if(bytesleft)
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 
 	MPB *myMemPool = findMemoryPool(memory);
 	if(myMemPool == NULL)
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-	*byesleft = myMemPool->MPid;
+	*bytesleft = myMemPool->MPid;
 
 	MachineResumeSignals(&OldState); //resume signals
 	return VM_STATUS_SUCCESS;
