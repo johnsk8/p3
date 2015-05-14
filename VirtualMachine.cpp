@@ -3,12 +3,13 @@
 	Authors: John Garcia, Felix Ng
 
 	In this version:
-	TVMStatus VMStart -					started
-	TVMStatus VMMemoryPoolCreate - 		started
-	TVMStatus VMMemoryPoolDelete - 		not started
-	TVMStatus VMMemoryPoolQuery - 		started
-	TVMStatus VMMemoryPoolAllocate - 	not started
-	TVMStatus VMMemoryPoolDeallocate - 	not started
+	VMStart -					done
+	VMMemoryPoolCreate - 		started
+	VMMemoryPoolDelete - 		not started
+	VMMemoryPoolQuery - 		started
+	VMMemoryPoolAllocate - 		started
+	VMMemoryPoolDeallocate - 	not started
+	VMFileWrite - 				not started
 
 	In order to remove all system V messages: 
 	1. ipcs //to see msg queue
@@ -22,12 +23,13 @@
 #include "Machine.h"
 #include <vector>
 #include <queue>
+#include <cstring>
 #include <iostream>
 using namespace std;
 
 extern "C"
 {
-#define VM_MEMORY_POOL_ID_SYSTEM 0
+#define VM_MEMORY_POOL_ID_SYSTEM 1
 
 class TCB
 {
@@ -63,8 +65,8 @@ class MPB
 	TVMMemoryPoolID MPid; //memory pool id
 	TVMMemorySizeRef MPsizeRef;
 	void *base; //pointer for base of stack
-	uint8_t freeSpace; //keeping track of free spaces
-	//keep track of sizes and allocated spaces
+	uint8_t freeSpace; //to keep track of free spaces
+	uint8_t *spaceMap; //to keep track of sizes and allocated spaces
 }; //clas MPB - Memory Pool Block
 
 void pushThread(TCB*);
@@ -86,8 +88,6 @@ queue<TCB*> lowPrio; //low priority queue
 
 vector<TCB*> sleepList; //sleeping threads
 vector<MB*> mutexSleepList; //sleeping mutexs
-
-uint8_t sharedMemoryID; //global ID of shared memory pool
 
 void AlarmCallBack(void *param, int result)
 {
@@ -321,6 +321,7 @@ TVMStatus VMStart(int tickms, TVMMemorySize heapsize, int machinetickms,
 
 	else //load successful
 	{
+		//THREADS START
 		uint8_t *stack = new uint8_t[0x100000]; //array of threads treated as a stack
 		idle->threadID = 0; //idle thread first in array of threads
 		idle->threadState = VM_THREAD_STATE_DEAD;
@@ -335,16 +336,27 @@ TVMStatus VMStart(int tickms, TVMMemorySize heapsize, int machinetickms,
 		VMMainTCB->threadState = VM_THREAD_STATE_RUNNING;
 		currentThread = VMMainTCB; //current thread is now main
 
-		uint8_t *base = new uint8_t[heapsize];
-		MPB *VMMainMPB = new MPB;
-		VMMainMPB->MPsize = heapsize; 
-		VMMainMPB->MPid = VM_MEMORY_POOL_ID_SYSTEM; //mem pool id is 0 as defined
-		VMMainMPB->base = base; //allocate for heapsize
-		sharedMemoryID = sharedsize; //initialize global shared mem pool id
-
-		memPoolList.push_back(VMMainMPB); //push main into mem pool list
 		threadList.push_back(idle); //push into pos 0
 		threadList.push_back(VMMainTCB); //push into pos 1
+
+		//MEMORY POOLS START
+		uint8_t *baseShared = new uint8_t[sharedsize]; //base ptr for shared mem
+		MPB *sharedMPB = new MPB;
+		sharedMPB->MPsize = sharedsize; //gets shared size of mem pools
+		sharedMPB->MPid = 0; //first into the list of mem pool
+		sharedMPB->base = baseShared;
+		sharedMPB->spaceMap = new uint8_t[1];
+		
+		uint8_t *base = new uint8_t[heapsize]; //base ptr for main pool
+		MPB *VMMainMPB = new MPB;
+		VMMainMPB->MPsize = heapsize;
+		VMMainMPB->MPid = VM_MEMORY_POOL_ID_SYSTEM; //mem pool id is 0 as defined
+		VMMainMPB->base = base; //allocate for heapsize
+		VMMainMPB->spaceMap = new uint8_t[heapsize/64 + (heapsize % 64 > 0)];
+
+		memPoolList.push_back(sharedMPB); //push shared into pos 0
+		memPoolList.push_back(VMMainMPB); //push main into mem pool list
+
 		VMMain(argc, argv); //call to vmmain
 		return VM_STATUS_SUCCESS;
 	}
@@ -406,6 +418,37 @@ TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void 
 	MPB *myMemPool = findMemoryPool(memory);
 	if(myMemPool == NULL) 
 		return VM_STATUS_ERROR_INVALID_PARAMETER; //mem does not exist
+
+	size = (size/64 + (size % 64 > 0)) * 64; //round to next multiple of 64 bytes
+	//cout << "size is " << size << endl;
+	int numSlots = (size/64 + (size % 64 > 0)); //how many slots an object needs for allocation
+	//cout << "numSlots is " << numSlots << endl;
+	int current = 0; //current slot for mem pool
+
+	int sizeofCurMP = sizeof(myMemPool->spaceMap)/8;
+	cout << "size of curr MP is " << sizeofCurMP << endl;
+
+	for(int i = 0; i < sizeof(myMemPool->spaceMap)/8; i++)
+	{
+		if(myMemPool->spaceMap[i] == '\0') //nothing in that slot so good
+		{
+			current++;
+			cout << "current slot i = " << current << endl;
+			if(current == numSlots)
+			{
+				//cout << "current inside numSlots now is = " << current << endl;
+				for(; i < numSlots; i--)
+					myMemPool->spaceMap[i] = currentThread->threadID; //place id at ith slot pos+numSlots
+				current = i * 64; //gives the position mapped to memory pool
+				break;
+			}
+			continue;
+		}
+		current = 0; //reset so we can find the next slot
+	} //going through our map to find open slots to allocate memory
+
+	cout << "final current = " << current << endl;
+	*((int*)pointer) = current; //pointer now mapped to current from our map
 
 	MachineResumeSignals(&OldState); //resume signals
 	return VM_STATUS_SUCCESS;
@@ -753,9 +796,11 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
 	if(data == NULL || length == NULL) //invalid input
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-	void *sharedLocation;
-	VMMemoryPoolAllocate(sharedMemoryID, (TVMMemorySize)*length, &sharedLocation);
-	memcpy(sharedLocation, data, (TVMMemorySize)*length);
+	VMMemoryPoolAllocate(0,255,&data); //for now to check whats going on
+
+	//void *sharedLocation;
+	//VMMemoryPoolAllocate(sharedMemoryID, (TVMMemorySize)*length, &sharedLocation);
+	//memcpy(sharedLocation, data, (TVMMemorySize)*length);
 
 	MachineFileWrite(filedescriptor, data, *length, FileCallBack, currentThread);
 
@@ -766,7 +811,7 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
 
 	MachineResumeSignals(&OldState); //resume signals
 	if(currentThread->fileResult < 0)
-		return VM_STATUS_FAILURE;
+		return VM_STATUS_FAILURE; //failure check
 	return VM_STATUS_SUCCESS;
 } //VMFileWrite() 
 
