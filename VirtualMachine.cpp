@@ -3,10 +3,10 @@
 	Authors: John Garcia, Felix Ng
 
 	In this version:
-	TVMStatus VMStart -					starting
-	TVMStatus VMMemoryPoolCreate - 		not started
+	TVMStatus VMStart -					started
+	TVMStatus VMMemoryPoolCreate - 		started
 	TVMStatus VMMemoryPoolDelete - 		not started
-	TVMStatus VMMemoryPoolQuery - 		not started
+	TVMStatus VMMemoryPoolQuery - 		started
 	TVMStatus VMMemoryPoolAllocate - 	not started
 	TVMStatus VMMemoryPoolDeallocate - 	not started
 
@@ -63,7 +63,7 @@ class MPB
 	TVMMemoryPoolID MPid; //memory pool id
 	TVMMemorySizeRef MPsizeRef;
 	void *base; //pointer for base of stack
-	uint8_t freeSpace; //something for keeping track of free spaces
+	uint8_t freeSpace; //keeping track of free spaces
 	//keep track of sizes and allocated spaces
 }; //clas MPB - Memory Pool Block
 
@@ -86,6 +86,8 @@ queue<TCB*> lowPrio; //low priority queue
 
 vector<TCB*> sleepList; //sleeping threads
 vector<MB*> mutexSleepList; //sleeping mutexs
+
+uint8_t sharedMemoryID; //global ID of shared memory pool
 
 void AlarmCallBack(void *param, int result)
 {
@@ -336,8 +338,9 @@ TVMStatus VMStart(int tickms, TVMMemorySize heapsize, int machinetickms,
 		uint8_t *base = new uint8_t[heapsize];
 		MPB *VMMainMPB = new MPB;
 		VMMainMPB->MPsize = heapsize; 
-		VMMainMPB->MPid = VM_MEMORY_POOL_ID_SYSTEM; //mem pool id is 0
+		VMMainMPB->MPid = VM_MEMORY_POOL_ID_SYSTEM; //mem pool id is 0 as defined
 		VMMainMPB->base = base; //allocate for heapsize
+		sharedMemoryID = sharedsize; //initialize global shared mem pool id
 
 		memPoolList.push_back(VMMainMPB); //push main into mem pool list
 		threadList.push_back(idle); //push into pos 0
@@ -749,6 +752,10 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
 
 	if(data == NULL || length == NULL) //invalid input
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
+
+	void *sharedLocation;
+	VMMemoryPoolAllocate(sharedMemoryID, (TVMMemorySize)*length, &sharedLocation);
+	memcpy(sharedLocation, data, (TVMMemorySize)*length);
 
 	MachineFileWrite(filedescriptor, data, *length, FileCallBack, currentThread);
 
