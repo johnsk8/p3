@@ -207,7 +207,7 @@ MPB *findMemoryPool(TVMMemoryPoolID memory)
 			return *itr; //memory id exists
 	}
 	return NULL; //memory id does not exist
-} //findMemoryPool;
+} //findMemoryPool();
 
 void removeFromMutex(TCB* myThread)
 {
@@ -338,7 +338,6 @@ TVMStatus VMStart(int tickms, TVMMemorySize heapsize, int machinetickms,
 		VMMainMPB->MPsize = heapsize; 
 		VMMainMPB->MPid = VM_MEMORY_POOL_ID_SYSTEM; //mem pool id is 0
 		VMMainMPB->base = base; //allocate for heapsize
-		VMMainMPB->MPid = 0; //first in the memory pool
 
 		memPoolList.push_back(VMMainMPB); //push main into mem pool list
 		threadList.push_back(idle); //push into pos 0
