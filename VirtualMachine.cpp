@@ -5,7 +5,7 @@
 	In this version:
 	VMStart -					done
 	VMMemoryPoolCreate - 		done
-	VMMemoryPoolDelete - 		started
+	VMMemoryPoolDelete - 		done
 	VMMemoryPoolQuery - 		started
 	VMMemoryPoolAllocate - 		done
 	VMMemoryPoolDeallocate - 	not started
