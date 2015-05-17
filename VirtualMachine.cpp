@@ -7,9 +7,9 @@
 	VMMemoryPoolCreate - 		done
 	VMMemoryPoolDelete - 		started
 	VMMemoryPoolQuery - 		started
-	VMMemoryPoolAllocate - 		done?
+	VMMemoryPoolAllocate - 		done
 	VMMemoryPoolDeallocate - 	not started
-	VMFileWrite - 				started
+	VMFileWrite - 				done? need 512 check
 
 	In order to remove all system V messages: 
 	1. ipcs //to see msg queue
@@ -392,10 +392,13 @@ TVMStatus VMMemoryPoolDelete(TVMMemoryPoolID memory)
 	vector<MPB*>::iterator itr;
 	for(itr = memPoolList.begin(); itr != memPoolList.end(); ++itr)
 	{
-		if((*itr) == myMemPool) //spec mem pool does exist
+		if((*itr) == myMemPool) //specified mem pool does exist
 		{
-			if(!myMemPool->spaceMap) //if that allocation block is not empty
-				return VM_STATUS_ERROR_INVALID_STATE;
+			for(uint32_t i = 0; i < myMemPool->MPsize/64; i++)
+			{
+				if(myMemPool->spaceMap[i] != 0)
+					return VM_STATUS_ERROR_INVALID_STATE; //theres something in there so cant
+			}
 			break; //then its empty and its okay to delete
 		}
 	} //iterate through list of memory pool
@@ -463,9 +466,6 @@ TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void 
 		current = 0; //reset so we can find the next slot
 	} //going through our map to find open slots to allocate memory
 
-	//cout << "final current = " << current << endl;
-	//uint32_t *offset = (uint32_t*)myMemPool->base + current;
-	//cout << "our offset is " << offset << endl;
 	*pointer = (uint32_t*)myMemPool->base + current; //offset; //pointer now mapped to current from our map
 
 	MachineResumeSignals(&OldState); //resume signals
