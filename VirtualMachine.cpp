@@ -4,12 +4,14 @@
 
 	In this version:
 	VMStart -					done
-	VMMemoryPoolCreate - 		done
+	VMMemoryPoolCreate - 		need to take from main memory pool
 	VMMemoryPoolDelete - 		done
-	VMMemoryPoolQuery - 		started
-	VMMemoryPoolAllocate - 		done
-	VMMemoryPoolDeallocate - 	not started
-	VMFileWrite - 				done? need 512 check
+	VMMemoryPoolQuery - 		done
+	VMMemoryPoolAllocate - 		done, but updated by felix
+	VMMemoryPoolDeallocate - 	started
+	VMFileWrite - 				done, but need call to deallocate and 512 bytes check
+	VMFileRead - 				done, but need call to deallocate
+	All others functions - 		done
 
 	In order to remove all system V messages: 
 	1. ipcs //to see msg queue
@@ -23,14 +25,12 @@
 #include "Machine.h"
 #include <vector>
 #include <queue>
-#include <cstring>
 #include <iostream>
+extern const TVMMemoryPoolID VM_MEMORY_POOL_ID_SYSTEM = 1;
 using namespace std;
 
 extern "C"
 {
-#define VM_MEMORY_POOL_ID_SYSTEM 1
-
 class TCB
 {
 	public:
@@ -421,12 +421,14 @@ TVMStatus VMMemoryPoolQuery(TVMMemoryPoolID memory, TVMMemorySizeRef bytesleft)
 	if(myMemPool == NULL)
 		return VM_STATUS_ERROR_INVALID_PARAMETER; //mem does not exist
 
-	//*bytesleft = myMemPool->MPid; //need to fix this
+	uint32_t current = 0; //counter to know how many slots are free of memory
+    for(uint32_t i = 0; i < myMemPool->MPsize/64; i++)
+    {
+        if(myMemPool->spaceMap[i] == 0) //if space available, then add it to chunks available
+            current++;
+    } //go through the space map
 
-	/*unsigned int numAllocated = 0;
-	for(itr = allocatedSpace.begin(); itr != allocatedSpace.end(); itr++)
-		numAllocated = numAllocated + (*itr)->MPsize;
-	*bytesleft = size - numAllocated);*/
+    *bytesleft = current * 64; //return bytesleft
 
 	MachineResumeSignals(&OldState); //resume signals
 	return VM_STATUS_SUCCESS;
@@ -456,7 +458,7 @@ TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void 
 			{
 				for(uint32_t j = 0; j < numSlots; j++)
 				{
-					myMemPool->spaceMap[i - j] = currentThread->threadID; //place id at ith slot pos+numSlots
+					myMemPool->spaceMap[i - j] = currentThread->threadID; //place id at those slots open
 					current = (i - j) * 64; //gives the position mapped to memory pool
 				}
 				break; //get out once youre done allocating spaces
@@ -480,12 +482,23 @@ TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
 	if(pointer == NULL)
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-	/*MPB *myMemPool = findMemoryPool(memory);
+	MPB *myMemPool = findMemoryPool(memory);
 	if(myMemPool == NULL) 
-		return VM_STATUS_ERROR_INVALID_PARAMETER; //mem does not exist*/
+		return VM_STATUS_ERROR_INVALID_PARAMETER; //mem does not exist
 
-	//Call to dellocate here by pointer
-	//something like deallocate(myMemPool->pointer)
+	uint32_t current = 0;
+
+	for(uint32_t i = 0; i < myMemPool->MPsize/64; i++)
+	{
+		if(myMemPool->spaceMap[i] == currentThread->threadID) //check if its id to deallocate
+		{
+			current++;
+			//for(uint32_t j = 0; j < numSlots; j++)
+			//{
+			//	myMemPool->spaceMap[i - j] = 0;
+			//}
+		}
+	}
 
 	MachineResumeSignals(&OldState); //resume signals
 	return VM_STATUS_SUCCESS;
@@ -804,10 +817,17 @@ TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
 	if(data == NULL || length == NULL) //invalid input
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-	MachineFileRead(filedescriptor, data, *length, FileCallBack, currentThread);
+	void *sharedBase;
+	VMMemoryPoolAllocate(0, *length, &sharedBase); //call to allocate shared memory
+    
+	MachineFileRead(filedescriptor, sharedBase, *length, FileCallBack, currentThread);
 
 	currentThread->threadState = VM_THREAD_STATE_WAITING;
 	Scheduler();
+
+	memcpy(data, sharedBase, *length); //call to copy memory to the shared location
+
+	//call to deallocate here
 
 	*length = currentThread->fileResult; //set length to file result
 
@@ -825,20 +845,16 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
 	if(data == NULL || length == NULL) //invalid input
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-	//VMMemoryPoolAllocate(0, 512, &data); //for now to check whats going on
+  	void *sharedBase;
+    VMMemoryPoolAllocate(0, *length, &sharedBase); //call to allocate shared memory
+    memcpy(sharedBase, data, *length); //call to copy memory to the shared location
 
-  	void *base;
-    VMMemoryPoolAllocate(0, *length, &base); //call to allocate shared memory
-
-    void *sharedlocation = base;
-    memcpy(sharedlocation, data, *length); //call to copy memory to the shared location
-
-	MachineFileWrite(filedescriptor, sharedlocation, *length, FileCallBack, currentThread);
-
-	//MachineFileWrite(filedescriptor, data, *length, FileCallBack, currentThread);
+	MachineFileWrite(filedescriptor, sharedBase, *length, FileCallBack, currentThread);
 
 	currentThread->threadState = VM_THREAD_STATE_WAITING;
 	Scheduler();
+
+	//call to deallocate here
 
 	*length = currentThread->fileResult; //set length to file result
 
