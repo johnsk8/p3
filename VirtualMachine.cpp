@@ -9,9 +9,9 @@
 	VMMemoryPoolQuery - 		done
 	VMMemoryPoolAllocate - 		done
 	VMMemoryPoolDeallocate - 	done
-	VMFileWrite - 				done
-	VMFileRead - 				done
-	VMThreads - 				need threads to get from memory pool and not new stacks
+	VMFileWrite - 				done, but 512 bytes check
+	VMFileRead - 				done, " "
+	VMThreads - 				done
 	All others functions - 		done
 
 	In order to remove all system V messages: 
@@ -26,6 +26,8 @@
 #include "Machine.h"
 #include <vector>
 #include <queue>
+#include <algorithm>
+#include <string.h>
 #include <iostream>
 extern const TVMMemoryPoolID VM_MEMORY_POOL_ID_SYSTEM = 1;
 using namespace std;
@@ -879,16 +881,43 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
 	if(data == NULL || length == NULL) //invalid input
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-  	void *sharedBase;
+	int lengthLeft = *length; //locally to keep track of length left we have
+	char *localdata = new char[*length + 1];
+  	strcpy(localdata, (char*)data);
+  	char *writeloc; //where to write to in location
+
+  	TVMStatus test = VM_STATUS_FAILURE;
+  	while (test != VM_STATUS_SUCCESS)
+  	{
+    	MachineResumeSignals(&OldState);
+    	test = VMMemoryPoolAllocate(0, min(*length, 512), (void**)&writeloc);
+    	//cout << " allocate" << endl;
+    	MachineSuspendSignals(&OldState);
+    	Scheduler(); //try to allocate until it works
+  	}
+
+	for(uint32_t i = 0; lengthLeft >= 0; i++, lengthLeft -= 512)
+	{
+    	memcpy(writeloc, &localdata[i * 512], min(lengthLeft, 512)); //call to copy memory to the shared location
+
+		MachineFileWrite(filedescriptor, writeloc, min(lengthLeft, 512), FileCallBack, currentThread);
+
+		currentThread->threadState = VM_THREAD_STATE_WAITING;
+		Scheduler();
+	}
+
+	delete localdata;
+
+  	/*void *sharedBase;
     VMMemoryPoolAllocate(0, *length, &sharedBase); //call to allocate shared memory
     memcpy(sharedBase, data, *length); //call to copy memory to the shared location
 
 	MachineFileWrite(filedescriptor, sharedBase, *length, FileCallBack, currentThread);
 
 	currentThread->threadState = VM_THREAD_STATE_WAITING;
-	Scheduler();
+	Scheduler();*/
 
-	VMMemoryPoolDeallocate(0, sharedBase);
+	VMMemoryPoolDeallocate(0, writeloc);
 
 	*length = currentThread->fileResult; //set length to file result
 
