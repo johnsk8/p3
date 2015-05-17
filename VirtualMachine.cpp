@@ -7,10 +7,10 @@
 	VMMemoryPoolCreate - 		done
 	VMMemoryPoolDelete - 		done
 	VMMemoryPoolQuery - 		done
-	VMMemoryPoolAllocate - 		done, but updated by felix
-	VMMemoryPoolDeallocate - 	started
-	VMFileWrite - 				done, but need call to deallocate and 512 bytes check
-	VMFileRead - 				done, but need call to deallocate
+	VMMemoryPoolAllocate - 		done
+	VMMemoryPoolDeallocate - 	done
+	VMFileWrite - 				done
+	VMFileRead - 				done
 	VMThreads - 				need threads to get from memory pool and not new stacks
 	All others functions - 		done
 
@@ -66,7 +66,6 @@ class MPB
 	TVMMemoryPoolID MPid; //memory pool id
 	TVMMemorySizeRef MPsizeRef;
 	void *base; //pointer for base of stack
-	uint8_t freeSpace; //to keep track of free spaces
 	uint8_t *spaceMap; //to keep track of sizes and allocated spaces
 }; //clas MPB - Memory Pool Block
 
@@ -322,7 +321,7 @@ TVMStatus VMStart(int tickms, TVMMemorySize heapsize, int machinetickms,
 
 	else //load successful
 	{
-		//THREADS START
+		//THREADS
 		uint8_t *stack = new uint8_t[0x100000]; //array of threads treated as a stack
 		idle->threadID = 0; //idle thread first in array of threads
 		idle->threadState = VM_THREAD_STATE_DEAD;
@@ -340,7 +339,7 @@ TVMStatus VMStart(int tickms, TVMMemorySize heapsize, int machinetickms,
 		threadList.push_back(idle); //push into pos 0
 		threadList.push_back(VMMainTCB); //push into pos 1
 
-		//MEMORY POOLS START
+		//MEMORY POOLS
 		MPB *sharedMPB = new MPB;
 		sharedMPB->MPsize = sharedsize; //gets shared size of mem pools
 		sharedMPB->MPid = 0; //first into the list of mem pool
@@ -370,7 +369,7 @@ TVMStatus VMMemoryPoolCreate(void *base, TVMMemorySize size, TVMMemoryPoolIDRef 
 	if(base == NULL || memory == NULL || size == 0) //invalid check
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-	uint8_t numSlots = (size/64 + (size % 64 > 0)); //how many slots an object needs for allocation
+	uint32_t numSlots = (size/64 + (size % 64 > 0)); //how many slots an object needs for allocation
 	uint32_t current = 0; //current slot for mem pool
 
 	MPB *myMemPool = findMemoryPool(VM_MEMORY_POOL_ID_SYSTEM);
@@ -397,7 +396,7 @@ TVMStatus VMMemoryPoolCreate(void *base, TVMMemorySize size, TVMMemoryPoolIDRef 
 	} //going through our map to find open slots to allocate memory
 
 	MPB *newMemPool = new MPB;
-	newMemPool->base = (uint32_t*)myMemPool->base + current;
+	newMemPool->base = (uint8_t*)myMemPool->base + current;
 	newMemPool->MPsize = size;
 	newMemPool->MPid = *memory = memPoolList.size(); //gets next size in list val
 	newMemPool->spaceMap = new uint8_t[size/64]; //might change later
@@ -473,10 +472,10 @@ TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void 
 	if(myMemPool == NULL) 
 		return VM_STATUS_ERROR_INVALID_PARAMETER; //mem does not exist
 
-	uint8_t numSlots = (size/64 + (size % 64 > 0)); //how many slots an object needs for allocation
+	uint32_t numSlots = (size/64 + (size % 64 > 0)); //how many slots an object needs for allocation
 	uint32_t current = 0; //current slot for mem pool
 
-	for(uint32_t i = 0; i < myMemPool->MPsize/64; i++)
+	for(uint32_t i = 0; i < (myMemPool->MPsize/64); i++)
 	{
 		if(myMemPool->spaceMap[i] == 0) //nothing in that slot so good
 		{
@@ -485,20 +484,22 @@ TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void 
 			{
 				for(uint32_t j = 0; j < numSlots; j++)
 				{
-					myMemPool->spaceMap[i - j] = currentThread->threadID; //place id at those slots open
+					myMemPool->spaceMap[i - j] = numSlots; //currentThread->threadID; //place id at those slots open
+					//cout << "numSlots: " << (int)numSlots << endl;
 					current = (i - j) * 64; //gives the position mapped to memory pool
+					//cout << "i - j: " << i - j << endl;
 				}
-				break; //get out once youre done allocating spaces
+				*pointer = (uint8_t*)myMemPool->base + current; //pointer now mapped to current from our map
+                MachineResumeSignals(&OldState); //resume signals
+                return VM_STATUS_SUCCESS; //we allocated so we are done
 			}
 			continue; //move on if not there yet
 		}
 		current = 0; //reset so we can find the next slot
 	} //going through our map to find open slots to allocate memory
 
-	*pointer = (uint32_t*)myMemPool->base + current; //offset; //pointer now mapped to current from our map
-
 	MachineResumeSignals(&OldState); //resume signals
-	return VM_STATUS_SUCCESS;
+	return VM_STATUS_ERROR_INSUFFICIENT_RESOURCES;
 } //VMMemoryPoolAllocate()
 
 TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
@@ -513,29 +514,23 @@ TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
 	if(myMemPool == NULL) 
 		return VM_STATUS_ERROR_INVALID_PARAMETER; //mem does not exist
 
-	uint32_t current = 0;
+	uint32_t offset = *(uint8_t*)&pointer - *(uint8_t*)&myMemPool->base; //the space between base and pointer
+    //uint8_t threadID = myMemPool->spaceMap[offset/64]; 
+	uint32_t numSlots = myMemPool->spaceMap[offset/64]; //gives us the thread id to deallocate if several
 
-	for(uint32_t i = 0; i < myMemPool->MPsize/64; i++)
-	{
-		if(myMemPool->spaceMap[i] == currentThread->threadID) //check if its id to deallocate
-		{
-			current++;
-			for(uint32_t j = 0; j < current; j++)
-			{
-				myMemPool->spaceMap[i - j] = 0;
-				current = (i - j) * 64;
-			}
-			break;
-		}
-
-		else
-		{
-			current = 0;
-			continue;
-		}
-	}
-
-	pointer = (uint32_t*)myMemPool->base + current;
+    for(uint32_t i = 0; i < numSlots; i++)
+    {
+        if(myMemPool->spaceMap[i+offset/64] == numSlots) //threadID) //if exists
+        {
+            myMemPool->spaceMap[i+offset/64] = 0; //deallocate
+            //cout << "deallocated successful" << endl;
+            continue;
+        }
+        //this means there wasn't existed
+        MachineResumeSignals(&OldState);
+        return VM_STATUS_ERROR_INVALID_PARAMETER;
+        //break;
+    }
 
 	MachineResumeSignals(&OldState); //resume signals
 	return VM_STATUS_SUCCESS;
@@ -550,12 +545,13 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
 	if(entry == NULL || tid == NULL) //invalid
 		return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-	uint8_t *stack = new uint8_t[memsize]; //array of threads treated as a stack
+	void *stack; //array of threads treated as a stack
+	VMMemoryPoolAllocate(VM_MEMORY_POOL_ID_SYSTEM, memsize, &stack); //allocate pool for thread
 	TCB *newThread = new TCB; //start new thread
 	newThread->threadEntry = entry;
 	newThread->threadMemSize = memsize;
 	newThread->threadPrior = prio;
-	newThread->base = stack;
+	newThread->base = (uint8_t*)stack;
 	newThread->threadState = VM_THREAD_STATE_DEAD;
 	newThread->threadID = *tid = threadList.size();
 	threadList.push_back(newThread); //store new thread into next pos of list
@@ -575,6 +571,7 @@ TVMStatus VMThreadDelete(TVMThreadID thread)
 	if(myThread->threadState != VM_THREAD_STATE_DEAD) //dead check
 		return VM_STATUS_ERROR_INVALID_STATE;		
 
+	VMMemoryPoolDeallocate(VM_MEMORY_POOL_ID_SYSTEM, myThread->base); //deallocate this thread from pool
 	removeFromMutex(myThread); //check if in any mutexs
 
 	vector<TCB*>::iterator itr;
@@ -864,7 +861,7 @@ TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
 
 	memcpy(data, sharedBase, *length); //call to copy memory to the shared location
 
-	//call to deallocate here
+	VMMemoryPoolDeallocate(0, sharedBase);
 
 	*length = currentThread->fileResult; //set length to file result
 
@@ -891,7 +888,7 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
 	currentThread->threadState = VM_THREAD_STATE_WAITING;
 	Scheduler();
 
-	//call to deallocate here
+	VMMemoryPoolDeallocate(0, sharedBase);
 
 	*length = currentThread->fileResult; //set length to file result
 
