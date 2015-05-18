@@ -863,10 +863,10 @@ TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
 	VMMemoryPoolDeallocate(0, sharedBase);*/
 
 	int lengthLeft = *length; //locally to keep track of length left we have
-	char *localdata = new char[*length+1];
+	char *localdata = new char[*length];
   	strcpy(localdata, (char*)data);
   	char *writeloc; //where to write to in location
-  	uint32_t read = 0;
+  	uint32_t read = 0; //the number of bytes we have read
 
   	TVMStatus test = VM_STATUS_FAILURE;
   	while(test != VM_STATUS_SUCCESS)
@@ -879,9 +879,6 @@ TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
 
   	for(uint32_t i = 0; lengthLeft >= 0; i++, lengthLeft -= 512)
 	{
-		cout << "lengthLeft = " << lengthLeft << endl;
-		cout << "i is " << i << endl;
-    	
 		MachineFileRead(filedescriptor, writeloc, min(lengthLeft, 512), FileCallBack, currentThread);
 		currentThread->threadState = VM_THREAD_STATE_WAITING;
 		Scheduler();
@@ -890,12 +887,13 @@ TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
 		read += currentThread->fileResult;
 	} //read until we have exhausted the 512 space
 
-
+	//cout << "read is " << read << endl;
 	//data = localdata;
 	//strcpy((char*)data, localdata);
-	memcpy(data, localdata, sizeof(*localdata) * 237);
+	//memcpy(data, localdata, sizeof(*localdata)); //sizeof(*localdata) * 237);
 	//sprintf((char*)data, "%s", localdata);
 
+	//cout << localdata << endl;
 	delete localdata; //delete once were done with it
 	VMMemoryPoolDeallocate(0, writeloc);
 	*length = read; //set length to file result
@@ -903,6 +901,7 @@ TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
 	MachineResumeSignals(&OldState); //resume signals
 	if(currentThread->fileResult < 0) //check for failure
 		return VM_STATUS_FAILURE;
+
 	return VM_STATUS_SUCCESS;
 } //VMFileRead()
 
@@ -927,7 +926,7 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
 	char *localdata = new char[*length+1];
   	strcpy(localdata, (char*)data);
   	char *writeloc; //where to write to in location
-  	uint32_t written = 0;
+  	uint32_t written = 0; //the number of bytes we have written
 
   	TVMStatus test = VM_STATUS_FAILURE;
   	while(test != VM_STATUS_SUCCESS)
@@ -948,6 +947,9 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
 		written += currentThread->fileResult;
 	}
 
+	//cout << written << endl;
+	//cout << localdata << endl;
+	//strcpy(localdata, (char*)data);
 	delete localdata; //delete once were done with it
 	VMMemoryPoolDeallocate(0, writeloc);
 	*length = written; //set length to file result
