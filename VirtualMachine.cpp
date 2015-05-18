@@ -887,13 +887,6 @@ TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
 		read += currentThread->fileResult;
 	} //read until we have exhausted the 512 space
 
-	//cout << "read is " << read << endl;
-	//data = localdata;
-	//strcpy((char*)data, localdata);
-	//memcpy(data, localdata, sizeof(*localdata)); //sizeof(*localdata) * 237);
-	//sprintf((char*)data, "%s", localdata);
-
-	//cout << localdata << endl;
 	delete localdata; //delete once were done with it
 	VMMemoryPoolDeallocate(0, writeloc);
 	*length = read; //set length to file result
@@ -947,11 +940,39 @@ TVMStatus VMFileWrite(int filedescriptor, void *data, int *length)
 		written += currentThread->fileResult;
 	}
 
-	//cout << written << endl;
-	//cout << localdata << endl;
-	//strcpy(localdata, (char*)data);
-	delete localdata; //delete once were done with it
-	VMMemoryPoolDeallocate(0, writeloc);
+	/*uint32_t tempLength = *length, written = 0;;
+	//char *localdata = new char[*length];
+	void *sharedBase;
+
+	VMMemoryPoolAllocate(0, 512, &sharedBase);
+
+	if(*length > 512)
+	{
+		while(tempLength > 0)
+		{
+			//cout << "im in" << endl;
+			//cout << "lengthLeft/512 = " << lengthLeft/512 << endl;
+			//memcpy(sharedBase, &localdata, 512);
+			memcpy(sharedBase, data, 512);
+			MachineFileWrite(filedescriptor, sharedBase, 512, FileCallBack, currentThread);
+
+			currentThread->threadState = VM_THREAD_STATE_WAITING;
+			Scheduler();
+
+			tempLength -= 512;
+			written += currentThread->fileResult;
+			//cout << "written = " << written << endl;
+			data = (uint8_t*)data + 512;
+		}
+	}
+	
+	//length -= written; //remaining left to write
+
+	//memcpy(localdata, sharedBase, *length);
+	//MachineFileWrite(filedescriptor, sharedBase, *length, FileCallBack, currentThread);*/
+
+	delete localdata;
+	VMMemoryPoolDeallocate(0, writeloc); //&sharedBase);
 	*length = written; //set length to file result
 
 	MachineResumeSignals(&OldState); //resume signals
