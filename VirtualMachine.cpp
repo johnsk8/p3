@@ -370,29 +370,6 @@ TVMStatus VMMemoryPoolCreate(void *base, TVMMemorySize size, TVMMemoryPoolIDRef 
     if(base == NULL || memory == NULL || size == 0) //invalid check
         return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-    /*uint32_t curr = 0;
-    uint32_t slots = size/64  + (size % 64 > 0);
-    MPB *myMemPool = findMemoryPool(VM_MEMORY_POOL_ID_SYSTEM);
-
-    for(int i = 0; i < myMemPool->MPsize/64 ; i++)
-    {
-        if(myMemPool->spaceMap[i] == 0) //if this slot empty, check neighboring slots for empty
-        {           
-            curr++;
-            if(curr == slots) //if enough slots are open
-            {     
-                for(int j = 0 ; j < slots; j++)
-                {
-                    myMemPool->spaceMap[i - j] = memPoolList.size(); //size becomes poolID
-                    curr = (i - j) * 64; //curr becomes offset of base
-                }   
-                break; //get out once youre done allocating spaces
-            }
-            continue; //move on if not there yet
-        }
-        curr = 0; //reset so we can find the next slot
-    } //going through our map to find open slots to allocate memory*/
-
     uint8_t *sharedBase = new uint8_t[size]; //this line is not working
     MPB *newMemPool = new MPB;
     newMemPool->base = (uint8_t*)sharedBase; //(uint8_t*)myMemPool->base + curr;
@@ -534,9 +511,16 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
     if(entry == NULL || tid == NULL) //invalid
         return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-    uint8_t *stack = new uint8_t[memsize]; //array of threads treated as a stack
-    //void *stack; //array of threads treated as a stack
+    void *stack; //array of threads treated as a stack
     //VMMemoryPoolAllocate(VM_MEMORY_POOL_ID_SYSTEM, memsize, &stack); //allocate pool for thread
+
+    if(VM_STATUS_SUCCESS != VMMemoryPoolAllocate(VM_MEMORY_POOL_ID_SYSTEM, (int)memsize, &stack)) //(void**)&stack))
+    {
+        VMPrintError("Failed to allocate full space\n");
+        return 0;
+    }
+
+    //uint8_t *stack = new uint8_t[memsize]; //array of threads treated as a stack
     TCB *newThread = new TCB; //start new thread
     newThread->threadEntry = entry;
     newThread->threadMemSize = memsize;
@@ -561,7 +545,7 @@ TVMStatus VMThreadDelete(TVMThreadID thread)
     if(myThread->threadState != VM_THREAD_STATE_DEAD) //dead check
         return VM_STATUS_ERROR_INVALID_STATE;       
 
-    //VMMemoryPoolDeallocate(VM_MEMORY_POOL_ID_SYSTEM, myThread->base); //deallocate this thread from pool
+    VMMemoryPoolDeallocate(VM_MEMORY_POOL_ID_SYSTEM, myThread->base); //deallocate this thread from pool
     removeFromMutex(myThread); //check if in any mutexs
 
     vector<TCB*>::iterator itr;
@@ -878,10 +862,10 @@ TVMStatus VMFileRead(int filedescriptor, void *data, int *length)
     VMMemoryPoolDeallocate(0, sharedBase);
     *length = read; //set length to what we have read
 
-    MachineResumeSignals(&OldState); //resume signals
     if(currentThread->fileResult < 0) //check for failure
         return VM_STATUS_FAILURE;
 
+    MachineResumeSignals(&OldState); //resume signals
     return VM_STATUS_SUCCESS;
 } //VMFileRead()
 
