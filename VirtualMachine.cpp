@@ -475,9 +475,10 @@ TVMStatus VMMemoryPoolAllocate(TVMMemoryPoolID memory, TVMMemorySize size, void 
 
 TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
 {
-   TMachineSignalState OldState; //local variable to suspend
+    TMachineSignalState OldState; //local variable to suspend
     MachineSuspendSignals(&OldState); //suspend signalsMPB *myMemPool = findMemoryPool(memory);
 
+    cout << "deallocate called" << endl;
     MPB *myMemPool = findMemoryPool(memory);
     if(myMemPool == NULL || pointer == NULL) 
         return VM_STATUS_ERROR_INVALID_PARAMETER; //mem does not exist
@@ -511,16 +512,16 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
     if(entry == NULL || tid == NULL) //invalid
         return VM_STATUS_ERROR_INVALID_PARAMETER;
 
-    void *stack; //array of threads treated as a stack
+    //void *stack; //array of threads treated as a stack
     //VMMemoryPoolAllocate(VM_MEMORY_POOL_ID_SYSTEM, memsize, &stack); //allocate pool for thread
 
-    if(VM_STATUS_SUCCESS != VMMemoryPoolAllocate(VM_MEMORY_POOL_ID_SYSTEM, (int)memsize, &stack)) //(void**)&stack))
-    {
+    //if(VM_STATUS_SUCCESS != VMMemoryPoolAllocate(VM_MEMORY_POOL_ID_SYSTEM, (uint32_t)memsize, (void**)&stack)) //(void**)&stack))
+    /*{
         VMPrintError("Failed to allocate full space\n");
         return 0;
-    }
+    }*/
 
-    //uint8_t *stack = new uint8_t[memsize]; //array of threads treated as a stack
+    uint8_t *stack = new uint8_t[memsize]; //array of threads treated as a stack
     TCB *newThread = new TCB; //start new thread
     newThread->threadEntry = entry;
     newThread->threadMemSize = memsize;
@@ -545,7 +546,7 @@ TVMStatus VMThreadDelete(TVMThreadID thread)
     if(myThread->threadState != VM_THREAD_STATE_DEAD) //dead check
         return VM_STATUS_ERROR_INVALID_STATE;       
 
-    VMMemoryPoolDeallocate(VM_MEMORY_POOL_ID_SYSTEM, myThread->base); //deallocate this thread from pool
+    //VMMemoryPoolDeallocate(VM_MEMORY_POOL_ID_SYSTEM, myThread->base); //deallocate this thread from pool
     removeFromMutex(myThread); //check if in any mutexs
 
     vector<TCB*>::iterator itr;
