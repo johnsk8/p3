@@ -478,7 +478,6 @@ TVMStatus VMMemoryPoolDeallocate(TVMMemoryPoolID memory, void *pointer)
     TMachineSignalState OldState; //local variable to suspend
     MachineSuspendSignals(&OldState); //suspend signalsMPB *myMemPool = findMemoryPool(memory);
 
-    cout << "deallocate called" << endl;
     MPB *myMemPool = findMemoryPool(memory);
     if(myMemPool == NULL || pointer == NULL) 
         return VM_STATUS_ERROR_INVALID_PARAMETER; //mem does not exist
@@ -513,7 +512,7 @@ TVMStatus VMThreadCreate(TVMThreadEntry entry, void *param, TVMMemorySize memsiz
         return VM_STATUS_ERROR_INVALID_PARAMETER;
 
     //void *stack; //array of threads treated as a stack
-    //VMMemoryPoolAllocate(VM_MEMORY_POOL_ID_SYSTEM, memsize, &stack); //allocate pool for thread
+    //VMMemoryPoolAllocate(VM_MEMORY_POOL_ID_SYSTEM, (uint32_t)memsize, &stack); //allocate pool for thread
 
     //if(VM_STATUS_SUCCESS != VMMemoryPoolAllocate(VM_MEMORY_POOL_ID_SYSTEM, (uint32_t)memsize, (void**)&stack)) //(void**)&stack))
     /*{
